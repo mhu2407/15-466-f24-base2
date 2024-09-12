@@ -12,23 +12,23 @@
 
 #include <random>
 
-GLuint hexapod_meshes_for_lit_color_texture_program = 0;
-Load< MeshBuffer > hexapod_meshes(LoadTagDefault, []() -> MeshBuffer const * {
-	MeshBuffer const *ret = new MeshBuffer(data_path("hexapod.pnct"));
-	hexapod_meshes_for_lit_color_texture_program = ret->make_vao_for_program(lit_color_texture_program->program);
+GLuint cups_meshes_for_lit_color_texture_program = 0;
+Load< MeshBuffer > cups_meshes(LoadTagDefault, []() -> MeshBuffer const * {
+	MeshBuffer const *ret = new MeshBuffer(data_path("cups.pnct"));
+	cups_meshes_for_lit_color_texture_program = ret->make_vao_for_program(lit_color_texture_program->program);
 	return ret;
 });
 
-Load< Scene > hexapod_scene(LoadTagDefault, []() -> Scene const * {
-	return new Scene(data_path("hexapod.scene"), [&](Scene &scene, Scene::Transform *transform, std::string const &mesh_name){
-		Mesh const &mesh = hexapod_meshes->lookup(mesh_name);
+Load< Scene > cups_scene(LoadTagDefault, []() -> Scene const * {
+	return new Scene(data_path("cups.scene"), [&](Scene &scene, Scene::Transform *transform, std::string const &mesh_name){
+		Mesh const &mesh = cups_meshes->lookup(mesh_name);
 
 		scene.drawables.emplace_back(transform);
 		Scene::Drawable &drawable = scene.drawables.back();
 
 		drawable.pipeline = lit_color_texture_program_pipeline;
 
-		drawable.pipeline.vao = hexapod_meshes_for_lit_color_texture_program;
+		drawable.pipeline.vao = cups_meshes_for_lit_color_texture_program;
 		drawable.pipeline.type = mesh.type;
 		drawable.pipeline.start = mesh.start;
 		drawable.pipeline.count = mesh.count;
@@ -36,23 +36,55 @@ Load< Scene > hexapod_scene(LoadTagDefault, []() -> Scene const * {
 	});
 });
 
-PlayMode::PlayMode() : scene(*hexapod_scene) {
+PlayMode::PlayMode() : scene(*cups_scene) {
 	//get pointers to leg for convenience:
 	for (auto &transform : scene.transforms) {
-		if (transform.name == "Hip.FL") hip = &transform;
-		else if (transform.name == "UpperLeg.FL") upper_leg = &transform;
-		else if (transform.name == "LowerLeg.FL") lower_leg = &transform;
+		if (transform.name == "Cylinder.006") {
+			red.color = "red";
+			red.transform = &transform;
+			red.base_position = red.transform->position;
+			player_cup_order[0] = &red;
+			target_order[3] = &red;
+		} else if (transform.name == "Cylinder.005") {
+			orange.color = "orange";
+			orange.transform = &transform;
+			orange.base_position = orange.transform->position;
+			player_cup_order[1] = &orange;
+			target_order[1] = &orange;
+		} else if (transform.name == "Cylinder.004") {
+			yellow.color = "yellow";
+			yellow.transform = &transform;
+			yellow.base_position = yellow.transform->position;
+			player_cup_order[2] = &yellow;
+			target_order[5] = &yellow;
+		} else if (transform.name == "Cylinder.003") {
+			purple.color = "purple";
+			purple.transform = &transform;
+			purple.base_position = purple.transform->position;
+			player_cup_order[5] = &purple;
+			target_order[4] = &purple;
+		} else if (transform.name == "Cylinder.002") {
+			green.color = "green";
+			green.transform = &transform;
+			green.base_position = green.transform->position;
+			player_cup_order[3] = &green;
+			target_order[0] = &green;
+		} else if (transform.name == "Cylinder.001") {
+			blue.color = "blue";
+			blue.transform = &transform;
+			blue.base_position = blue.transform->position;
+			player_cup_order[4] = &blue;
+			target_order[2] = &blue;
+		}
+
 	}
-	if (hip == nullptr) throw std::runtime_error("Hip not found.");
-	if (upper_leg == nullptr) throw std::runtime_error("Upper leg not found.");
-	if (lower_leg == nullptr) throw std::runtime_error("Lower leg not found.");
+	if (red.transform == nullptr) throw std::runtime_error("Red cup not found.");
+	if (orange.transform == nullptr) throw std::runtime_error("Orange cup not found.");
+	if (yellow.transform == nullptr) throw std::runtime_error("Yellow cup not found.");
+	if (green.transform == nullptr) throw std::runtime_error("Green cup not found.");
+	if (blue.transform == nullptr) throw std::runtime_error("Blue cup not found.");
+	if (purple.transform == nullptr) throw std::runtime_error("Purple cup not found.");
 
-	hip_base_rotation = hip->rotation;
-	upper_leg_base_rotation = upper_leg->rotation;
-	lower_leg_base_rotation = lower_leg->rotation;
-
-	//get pointer to camera for convenience:
-	if (scene.cameras.size() != 1) throw std::runtime_error("Expecting scene to have exactly one camera, but it has " + std::to_string(scene.cameras.size()));
 	camera = &scene.cameras.front();
 }
 
@@ -62,24 +94,38 @@ PlayMode::~PlayMode() {
 bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
 
 	if (evt.type == SDL_KEYDOWN) {
-		if (evt.key.keysym.sym == SDLK_ESCAPE) {
-			SDL_SetRelativeMouseMode(SDL_FALSE);
-			return true;
-		} else if (evt.key.keysym.sym == SDLK_a) {
+		if (evt.key.keysym.sym == SDLK_a) {
 			left.downs += 1;
 			left.pressed = true;
+			if (current_cup_index == 0) current_cup_index = 5;
+			else current_cup_index -= 1;
 			return true;
 		} else if (evt.key.keysym.sym == SDLK_d) {
 			right.downs += 1;
 			right.pressed = true;
+			if (current_cup_index == 5) current_cup_index = 0;
+			else current_cup_index += 1;
 			return true;
-		} else if (evt.key.keysym.sym == SDLK_w) {
-			up.downs += 1;
-			up.pressed = true;
+		} else if (evt.key.keysym.sym == SDLK_SPACE) {
+			space.pressed = true;
+			space.downs += 1;
+			// unselect if already selected
+			if (selected_1 == current_cup_index) selected_1 = 6;
+			else if (selected_2 == current_cup_index) {
+				selected_2 = selected_1;
+				selected_1 = 6;
+			} else {
+				assert((selected_1 != current_cup_index) && (selected_1 != current_cup_index));
+				selected_2 = selected_1;
+				selected_1 = current_cup_index;
+			}
 			return true;
-		} else if (evt.key.keysym.sym == SDLK_s) {
-			down.downs += 1;
-			down.pressed = true;
+		} else if (evt.key.keysym.sym == SDLK_RETURN) {
+			// swap cups and cup positions
+			if ((selected_2 != 6) && (selected_1 != 6)) {
+				enter.pressed = true;
+				enter.downs += 1;
+			}
 			return true;
 		}
 	} else if (evt.type == SDL_KEYUP) {
@@ -89,29 +135,11 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 		} else if (evt.key.keysym.sym == SDLK_d) {
 			right.pressed = false;
 			return true;
-		} else if (evt.key.keysym.sym == SDLK_w) {
-			up.pressed = false;
+		} else if (evt.key.keysym.sym == SDLK_SPACE) {
+			space.pressed = false;
 			return true;
-		} else if (evt.key.keysym.sym == SDLK_s) {
-			down.pressed = false;
-			return true;
-		}
-	} else if (evt.type == SDL_MOUSEBUTTONDOWN) {
-		if (SDL_GetRelativeMouseMode() == SDL_FALSE) {
-			SDL_SetRelativeMouseMode(SDL_TRUE);
-			return true;
-		}
-	} else if (evt.type == SDL_MOUSEMOTION) {
-		if (SDL_GetRelativeMouseMode() == SDL_TRUE) {
-			glm::vec2 motion = glm::vec2(
-				evt.motion.xrel / float(window_size.y),
-				-evt.motion.yrel / float(window_size.y)
-			);
-			camera->transform->rotation = glm::normalize(
-				camera->transform->rotation
-				* glm::angleAxis(-motion.x * camera->fovy, glm::vec3(0.0f, 1.0f, 0.0f))
-				* glm::angleAxis(motion.y * camera->fovy, glm::vec3(1.0f, 0.0f, 0.0f))
-			);
+		} else if (evt.key.keysym.sym == SDLK_RETURN) {
+			enter.pressed = false;
 			return true;
 		}
 	}
@@ -120,51 +148,74 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 }
 
 void PlayMode::update(float elapsed) {
+	float speed = 20.0f;
+	if (enter.pressed) {
+		moving_cups = true;
+	}
+	if (moving_cups) {
+		// ensure that selected_2 has the greater y position
+		if (selected_1 > selected_2) {
+			uint32_t temp_selected = selected_1;
+			selected_1 = selected_2;
+			selected_2 = temp_selected;
+		}
+		temp_1 = player_cup_order[selected_1];
+		temp_2 = player_cup_order[selected_2];
 
-	//slowly rotates through [0,1):
-	wobble += elapsed / 10.0f;
-	wobble -= std::floor(wobble);
-
-	hip->rotation = hip_base_rotation * glm::angleAxis(
-		glm::radians(5.0f * std::sin(wobble * 2.0f * float(M_PI))),
-		glm::vec3(0.0f, 1.0f, 0.0f)
-	);
-	upper_leg->rotation = upper_leg_base_rotation * glm::angleAxis(
-		glm::radians(7.0f * std::sin(wobble * 2.0f * 2.0f * float(M_PI))),
-		glm::vec3(0.0f, 0.0f, 1.0f)
-	);
-	lower_leg->rotation = lower_leg_base_rotation * glm::angleAxis(
-		glm::radians(10.0f * std::sin(wobble * 3.0f * 2.0f * float(M_PI))),
-		glm::vec3(0.0f, 0.0f, 1.0f)
-	);
-
-	//move camera:
-	{
-
-		//combine inputs into a move:
-		constexpr float PlayerSpeed = 30.0f;
-		glm::vec2 move = glm::vec2(0.0f);
-		if (left.pressed && !right.pressed) move.x =-1.0f;
-		if (!left.pressed && right.pressed) move.x = 1.0f;
-		if (down.pressed && !up.pressed) move.y =-1.0f;
-		if (!down.pressed && up.pressed) move.y = 1.0f;
-
-		//make it so that moving diagonally doesn't go faster:
-		if (move != glm::vec2(0.0f)) move = glm::normalize(move) * PlayerSpeed * elapsed;
-
-		glm::mat4x3 frame = camera->transform->make_local_to_parent();
-		glm::vec3 frame_right = frame[0];
-		//glm::vec3 up = frame[1];
-		glm::vec3 frame_forward = -frame[2];
-
-		camera->transform->position += move.x * frame_right + move.y * frame_forward;
+		assert(selected_1 < selected_2);
+		// move cups to new x
+		if (player_cup_order[selected_1]->transform->position.y < player_cup_order[selected_2]->base_position.y) {
+			player_cup_order[selected_1]->transform->position.y += speed * elapsed;
+			player_cup_order[selected_2]->transform->position.y -= speed * elapsed;
+			if (player_cup_order[selected_1]->transform->position.y > player_cup_order[selected_2]->base_position.y) {
+				player_cup_order[selected_1]->transform->position.y = player_cup_order[selected_2]->base_position.y;
+			}
+			if (player_cup_order[selected_2]->transform->position.y < player_cup_order[selected_1]->base_position.y) {
+				player_cup_order[selected_2]->transform->position.y = player_cup_order[selected_1]->base_position.y;
+			}
+		// move cups down to original height
+		} else if (player_cup_order[selected_1]->transform->position.z > player_cup_order[selected_1]->base_position.z) {
+			player_cup_order[selected_1]->transform->position.z -= speed * elapsed;
+			player_cup_order[selected_2]->transform->position.z -= speed * elapsed;
+			if (player_cup_order[selected_1]->transform->position.z < player_cup_order[selected_1]->base_position.z) {
+				player_cup_order[selected_1]->transform->position.z = player_cup_order[selected_1]->base_position.z;
+			}
+			if (player_cup_order[selected_2]->transform->position.z < player_cup_order[selected_2]->base_position.z) {
+				player_cup_order[selected_2]->transform->position.z = player_cup_order[selected_2]->base_position.z;
+			}
+		// swap cups within array
+		} else {
+			player_cup_order[selected_1]->base_position = player_cup_order[selected_1]->transform->position;
+			player_cup_order[selected_2]->base_position = player_cup_order[selected_2]->transform->position;
+			player_cup_order[selected_1] = temp_2;
+			player_cup_order[selected_2] = temp_1;
+			selected_1 = 6;
+			selected_2 = 6;
+			moves += 1;
+			moving_cups = false;
+		}
+	// hover cups to indicate selection and current cup
+	} else { 
+		correct_cups = 0;
+		for (uint32_t i = 0; i < 6; i++) {
+			if ((i == selected_1) || (i == selected_2)){
+				player_cup_order[i]->transform->position.z = player_cup_order[i]->base_position.z + 2.0f;
+			} else if (i == current_cup_index) {
+				player_cup_order[i]->transform->position.z = player_cup_order[i]->base_position.z + 0.2f;
+			} else {
+				player_cup_order[i]->transform->position.z = player_cup_order[i]->base_position.z;
+			}
+			if (player_cup_order[i]->color == target_order[i]->color) {
+				correct_cups++;
+			}
+		}
 	}
 
 	//reset button press counters:
 	left.downs = 0;
 	right.downs = 0;
-	up.downs = 0;
-	down.downs = 0;
+	space.downs = 0;
+	enter.downs = 0;
 }
 
 void PlayMode::draw(glm::uvec2 const &drawable_size) {
@@ -190,7 +241,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 
 	scene.draw(*camera);
 
-	{ //use DrawLines to overlay some text:
+	{ //use DrawLines to overlay some text, display how many cups are correct
 		glDisable(GL_DEPTH_TEST);
 		float aspect = float(drawable_size.x) / float(drawable_size.y);
 		DrawLines lines(glm::mat4(
@@ -201,12 +252,20 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		));
 
 		constexpr float H = 0.09f;
-		lines.draw_text("Mouse motion rotates camera; WASD moves; escape ungrabs mouse",
+		std::string num_right = std::to_string(correct_cups);
+		std::string num_moves = std::to_string(moves);
+		std::string display_string;
+		if (correct_cups == 6) {
+			display_string = "You won in " + num_moves + " moves!";
+		} else {
+			display_string = num_right + " cups correctly placed";
+		}
+		lines.draw_text(display_string,
 			glm::vec3(-aspect + 0.1f * H, -1.0 + 0.1f * H, 0.0),
 			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
 			glm::u8vec4(0x00, 0x00, 0x00, 0x00));
 		float ofs = 2.0f / drawable_size.y;
-		lines.draw_text("Mouse motion rotates camera; WASD moves; escape ungrabs mouse",
+		lines.draw_text(display_string,
 			glm::vec3(-aspect + 0.1f * H + ofs, -1.0 + 0.1f * H + ofs, 0.0),
 			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
 			glm::u8vec4(0xff, 0xff, 0xff, 0x00));
